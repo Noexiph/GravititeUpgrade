@@ -34,18 +34,18 @@ public class GravititeUpgradeClient implements ClientModInitializer {
         // Calculate Max Capacity (1.5 crystals per Gravitite item)
         float maxCrystals = 0;
         for (ItemStack stack : client.player.getArmorItems()) {
-            // Adjust this check to match your specific item IDs
-            if (stack.getItem().toString().contains("gravitite")) {
+            if (stack.getItem().toString().toLowerCase().contains("gravitite")) {
                 maxCrystals += 1.5f;
             }
         }
 
         if (maxCrystals <= 0) return;
 
-        // Get current flight timer from your interface
+        // Get current flight timer (Now synced automatically!)
         float currentTimer = 0f;
+        // Convert Ticks to "Crystals" (20 ticks = 1 second = 1 crystal unit)
         if (client.player instanceof IGravititeFlightAccess access) {
-            currentTimer = access.aether$getFlightTimer();
+            currentTimer = access.aether$getFlightTimer() / 20.0f;
         }
 
         RenderSystem.setShader(GameRenderer::getPositionTexProgram);
@@ -55,8 +55,8 @@ public class GravititeUpgradeClient implements ClientModInitializer {
         int width = client.getWindow().getScaledWidth();
         int height = client.getWindow().getScaledHeight();
 
-        // Position: Above Armor Bar.
-        int left = width / 2 + 10;
+        // Position: LEFT Side, Above Armor Bar
+        // Armor bar is at height - 39. We go higher.
         int top = height - 49;
 
         int totalIcons = (int) Math.ceil(maxCrystals);
@@ -70,13 +70,13 @@ public class GravititeUpgradeClient implements ClientModInitializer {
                 state = 1; // Half
             }
 
-            // Texture offsets (assuming 9x9 icons side by side: Full | Half | Empty)
+            // Texture offsets (Full | Half | Empty)
             int u = 0;
             if (state == 1) u = 9;
             if (state == 0) u = 18;
 
-            // Draw Right-to-Left
-            int xPos = (width / 2) + 82 - (i * 8);
+            // Align Left (Start at -91, move right by 8 pixels per icon)
+            int xPos = (width / 2) - 91 + (i * 8);
 
             context.drawTexture(GRAVITY_BAR_TEXTURE, xPos, top, u, 0, 9, 9, 27, 9);
         }
