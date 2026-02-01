@@ -9,6 +9,7 @@ import net.minecraft.registry.Registry;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.sound.SoundEvent;
 import net.minecraft.util.Identifier;
+import noexiph.gravititeupgrade.registry.GravititeGameRules;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,7 +31,9 @@ public class GravititeUpgrade implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-// 1. Register the Payload Type (Common for both sides)
+        GravititeGameRules.initialize();
+
+        // 1. Register the Payload Type (Common for both sides)
         PayloadTypeRegistry.playC2S().register(GravititePayload.ID, GravititePayload.CODEC);
 
         // 2. Register the Server Receiver (Logic when packet arrives)

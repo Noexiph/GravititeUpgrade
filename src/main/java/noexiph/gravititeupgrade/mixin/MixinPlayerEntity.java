@@ -8,10 +8,11 @@ import net.minecraft.entity.data.TrackedData;
 import net.minecraft.entity.data.TrackedDataHandlerRegistry;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NbtCompound; // Import for NBT
+import net.minecraft.nbt.NbtCompound;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import noexiph.gravititeupgrade.IGravititeFlightAccess;
+import noexiph.gravititeupgrade.registry.GravititeGameRules; // Import the rules
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -27,9 +28,14 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
     }
 
     @Unique
+    private static final float VANILLA_FLIGHT_SPEED = 0.05f;
+
+    @Unique
     private static final TrackedData<Boolean> IS_GRAVITITE_FLYING = DataTracker.registerData(PlayerEntity.class, TrackedDataHandlerRegistry.BOOLEAN);
     @Unique
     private static final TrackedData<Float> FLIGHT_TIMER = DataTracker.registerData(PlayerEntity.class, TrackedDataHandlerRegistry.FLOAT);
+    @Unique
+    private static final TrackedData<Integer> FLIGHT_SPEED_PERCENT = DataTracker.registerData(PlayerEntity.class, TrackedDataHandlerRegistry.INTEGER);
     @Unique
     private Vec3d aether$lastPos = Vec3d.ZERO;
 
@@ -37,25 +43,29 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
     protected void initGravititeData(DataTracker.Builder builder, CallbackInfo ci) {
         builder.add(IS_GRAVITITE_FLYING, false);
         builder.add(FLIGHT_TIMER, 0f);
+        builder.add(FLIGHT_SPEED_PERCENT, 50);
     }
 
-    // --- NEW: NBT SAVING & LOADING ---
+    // --- NBT SAVING & LOADING (Updated) ---
 
     @Inject(method = "writeCustomDataToNbt", at = @At("TAIL"))
     public void writeGravititeNbt(NbtCompound nbt, CallbackInfo ci) {
-        // Save the current timer to the player data file
         nbt.putFloat("GravititeFlightTimer", this.aether$getFlightTimer());
+        // Save the flying state so we don't fall on login
+        nbt.putBoolean("GravititeIsFlying", this.aether$isGravititeFlying());
     }
 
     @Inject(method = "readCustomDataFromNbt", at = @At("TAIL"))
     public void readGravititeNbt(NbtCompound nbt, CallbackInfo ci) {
-        // Load the timer if it exists
         if (nbt.contains("GravititeFlightTimer")) {
             this.aether$setFlightTimer(nbt.getFloat("GravititeFlightTimer"));
         }
+        if (nbt.contains("GravititeIsFlying")) {
+            // Restore the flying state
+            this.aether$setGravititeFlying(nbt.getBoolean("GravititeIsFlying"));
+        }
     }
 
-    // ... (Keep existing Interface methods and Tick logic exactly as before) ...
     @Override
     public boolean aether$isGravititeFlying() { return this.dataTracker.get(IS_GRAVITITE_FLYING); }
 
@@ -70,17 +80,39 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
 
     @Inject(method = "tick", at = @At("TAIL"))
     private void manageGravititeFlight(CallbackInfo ci) {
-        // ... (Paste your existing robust depletion logic here) ...
         PlayerEntity player = (PlayerEntity) (Object) this;
+
+        // --- LOGIC SPLIT START ---
+
+        // 1. SERVER: Read GameRule and Sync to Client via DataTracker
+        if (!player.getWorld().isClient) {
+            int actualRuleValue = player.getWorld().getGameRules().getInt(GravititeGameRules.GRAVITITE_FLIGHT_SPEED_PERCENT);
+
+            // Only update if different to prevent packet spam
+            if (player.getDataTracker().get(FLIGHT_SPEED_PERCENT) != actualRuleValue) {
+                player.getDataTracker().set(FLIGHT_SPEED_PERCENT, actualRuleValue);
+            }
+        }
+
+        // 2. BOTH SIDES: Read from DataTracker (Client now knows the correct value!)
+        int syncedSpeedPercent = player.getDataTracker().get(FLIGHT_SPEED_PERCENT);
+        float customSpeed = VANILLA_FLIGHT_SPEED * (syncedSpeedPercent / 100.0f);
+
+        // --- LOGIC SPLIT END ---
 
         // 1. Vanilla Bridge
         if (this.aether$isGravititeFlying()) {
             if (!player.getAbilities().allowFlying) player.getAbilities().allowFlying = true;
             player.getAbilities().flying = true;
+
+            // Now both Client and Server agree on 'customSpeed'
+            player.getAbilities().setFlySpeed(customSpeed);
+
         } else {
             if (!player.isCreative() && !player.isSpectator()) {
                 player.getAbilities().allowFlying = false;
                 player.getAbilities().flying = false;
+                player.getAbilities().setFlySpeed(VANILLA_FLIGHT_SPEED);
             }
         }
 
