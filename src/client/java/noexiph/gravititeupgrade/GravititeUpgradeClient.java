@@ -24,7 +24,7 @@ public class GravititeUpgradeClient implements ClientModInitializer {
         HudRenderCallback.EVENT.register(this::renderGravititeHud);
 
         // 2. Register World Rendering (Flight Plane)
-        WorldRenderEvents.AFTER_ENTITIES.register(GravititePlaneRenderer::render);
+        WorldRenderEvents.AFTER_TRANSLUCENT.register(GravititePlaneRenderer::render);
         GravititeInputHandler.register();
         GravititeSoundController.register();
     }
