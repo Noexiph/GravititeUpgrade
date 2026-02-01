@@ -8,6 +8,7 @@ import net.minecraft.entity.data.TrackedData;
 import net.minecraft.entity.data.TrackedDataHandlerRegistry;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import noexiph.gravititeupgrade.IGravititeFlightAccess;
 import org.spongepowered.asm.mixin.Mixin;
@@ -68,37 +69,48 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
         // Only run logic on Server (Client gets updates via DataTracker)
         if (player.getWorld().isClient) return;
 
-        // Calculate Max Capacity based on Armor
+        // 1. Calculate Max Capacity (1.5s per piece)
         int pieces = 0;
         for (ItemStack stack : player.getArmorItems()) {
             if (stack.getItem().toString().toLowerCase().contains("gravitite")) {
                 pieces++;
             }
         }
-        float maxTime = pieces * 1.5f * 20; // Max ticks
+        float maxTime = pieces * 1.5f * 20;
 
         boolean isFlying = this.aether$isGravititeFlying();
         float timer = this.aether$getFlightTimer();
 
-        // Recharge Logic (On Ground)
+        // 2. State Management
         if (player.isOnGround()) {
+            // Landed: Disable flight and Recharge
             if (isFlying) {
-                this.aether$setGravititeFlying(false); // Landed
+                this.aether$setGravititeFlying(false);
                 isFlying = false;
             }
-            if (timer < maxTime) {
-                this.aether$setFlightTimer(timer + 1); // Recharge speed
-            }
-        }
 
-        // Deplete Logic (Flying)
-        if (isFlying && !player.isOnGround()) {
-            // Deplete only if moving
-            if (player.getVelocity().lengthSquared() > 0.005) {
+            if (timer < maxTime) {
+                this.aether$setFlightTimer(timer + 1);
+            }
+        } else if (isFlying) {
+            // In Air & Flying Mode
+
+            // 3. Deplete Logic (FIXED)
+            // Only deplete if player is actually inputting movement (Horizontal) or rising (Jumping/Flying Up)
+            // We ignore negative Y velocity (falling) so hovering in place doesn't waste much fuel
+            // (or you can decide hovering wastes fuel, but falling shouldn't).
+
+            Vec3d vel = player.getVelocity();
+            double horizontalSpeed = vel.horizontalLengthSquared(); // x^2 + z^2
+
+            // If moving horizontally OR moving up (climbing)
+            if (horizontalSpeed > 0.0001 || vel.y > 0) {
                 this.aether$setFlightTimer(timer - 1);
-                if (timer - 1 <= 0) {
-                    this.aether$setGravititeFlying(false); // Out of fuel
-                }
+            }
+
+            // Safety: Cut flight if out of fuel
+            if (timer <= 0) {
+                this.aether$setGravititeFlying(false);
             }
         }
     }
