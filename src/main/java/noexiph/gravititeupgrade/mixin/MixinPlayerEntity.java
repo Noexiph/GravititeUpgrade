@@ -8,6 +8,7 @@ import net.minecraft.entity.data.TrackedData;
 import net.minecraft.entity.data.TrackedDataHandlerRegistry;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NbtCompound; // Import for NBT
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import noexiph.gravititeupgrade.IGravititeFlightAccess;
@@ -29,8 +30,6 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
     private static final TrackedData<Boolean> IS_GRAVITITE_FLYING = DataTracker.registerData(PlayerEntity.class, TrackedDataHandlerRegistry.BOOLEAN);
     @Unique
     private static final TrackedData<Float> FLIGHT_TIMER = DataTracker.registerData(PlayerEntity.class, TrackedDataHandlerRegistry.FLOAT);
-
-    // Custom field to strictly track movement on the server
     @Unique
     private Vec3d aether$lastPos = Vec3d.ZERO;
 
@@ -40,28 +39,38 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
         builder.add(FLIGHT_TIMER, 0f);
     }
 
-    @Override
-    public boolean aether$isGravititeFlying() {
-        return this.dataTracker.get(IS_GRAVITITE_FLYING);
+    // --- NEW: NBT SAVING & LOADING ---
+
+    @Inject(method = "writeCustomDataToNbt", at = @At("TAIL"))
+    public void writeGravititeNbt(NbtCompound nbt, CallbackInfo ci) {
+        // Save the current timer to the player data file
+        nbt.putFloat("GravititeFlightTimer", this.aether$getFlightTimer());
     }
 
-    @Override
-    public void aether$setGravititeFlying(boolean flying) {
-        this.dataTracker.set(IS_GRAVITITE_FLYING, flying);
+    @Inject(method = "readCustomDataFromNbt", at = @At("TAIL"))
+    public void readGravititeNbt(NbtCompound nbt, CallbackInfo ci) {
+        // Load the timer if it exists
+        if (nbt.contains("GravititeFlightTimer")) {
+            this.aether$setFlightTimer(nbt.getFloat("GravititeFlightTimer"));
+        }
     }
 
+    // ... (Keep existing Interface methods and Tick logic exactly as before) ...
     @Override
-    public float aether$getFlightTimer() {
-        return this.dataTracker.get(FLIGHT_TIMER);
-    }
+    public boolean aether$isGravititeFlying() { return this.dataTracker.get(IS_GRAVITITE_FLYING); }
 
     @Override
-    public void aether$setFlightTimer(float time) {
-        this.dataTracker.set(FLIGHT_TIMER, time);
-    }
+    public void aether$setGravititeFlying(boolean flying) { this.dataTracker.set(IS_GRAVITITE_FLYING, flying); }
+
+    @Override
+    public float aether$getFlightTimer() { return this.dataTracker.get(FLIGHT_TIMER); }
+
+    @Override
+    public void aether$setFlightTimer(float time) { this.dataTracker.set(FLIGHT_TIMER, time); }
 
     @Inject(method = "tick", at = @At("TAIL"))
     private void manageGravititeFlight(CallbackInfo ci) {
+        // ... (Paste your existing robust depletion logic here) ...
         PlayerEntity player = (PlayerEntity) (Object) this;
 
         // 1. Vanilla Bridge
@@ -77,12 +86,10 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
 
         if (player.getWorld().isClient) return;
 
-        // Initialize lastPos if it's the first run
         if (this.aether$lastPos.equals(Vec3d.ZERO)) {
             this.aether$lastPos = player.getPos();
         }
 
-        // 2. Logic
         int pieces = 0;
         for (ItemStack stack : player.getArmorItems()) {
             if (stack.getItem().toString().toLowerCase().contains("gravitite")) {
@@ -103,20 +110,14 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
                 this.aether$setFlightTimer(timer + 1);
             }
         } else if (isFlying) {
-            // Deplete Logic (Robust Position Delta)
             double distSq = player.getPos().squaredDistanceTo(this.aether$lastPos);
-
-            // If moved more than a tiny bit (0.01 blocks)
             if (distSq > 0.0001) {
                 this.aether$setFlightTimer(timer - 1);
             }
-
             if (timer <= 0) {
                 this.aether$setGravititeFlying(false);
             }
         }
-
-        // Update lastPos for the next tick comparison
         this.aether$lastPos = player.getPos();
     }
 
