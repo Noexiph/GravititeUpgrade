@@ -25,11 +25,14 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
         super(entityType, world);
     }
 
-    // Define Synced Data Keys
     @Unique
     private static final TrackedData<Boolean> IS_GRAVITITE_FLYING = DataTracker.registerData(PlayerEntity.class, TrackedDataHandlerRegistry.BOOLEAN);
     @Unique
     private static final TrackedData<Float> FLIGHT_TIMER = DataTracker.registerData(PlayerEntity.class, TrackedDataHandlerRegistry.FLOAT);
+
+    // Custom field to strictly track movement on the server
+    @Unique
+    private Vec3d aether$lastPos = Vec3d.ZERO;
 
     @Inject(method = "initDataTracker", at = @At("TAIL"))
     protected void initGravititeData(DataTracker.Builder builder, CallbackInfo ci) {
@@ -57,28 +60,29 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
         this.dataTracker.set(FLIGHT_TIMER, time);
     }
 
-    @Inject(method = "tick", at = @At("HEAD"))
+    @Inject(method = "tick", at = @At("TAIL"))
     private void manageGravititeFlight(CallbackInfo ci) {
         PlayerEntity player = (PlayerEntity) (Object) this;
 
-        // --- VANILLA FLIGHT BRIDGE ---
-        // This connects our custom variable to the actual Vanilla flight mechanics
+        // 1. Vanilla Bridge
         if (this.aether$isGravititeFlying()) {
-            if (!player.getAbilities().allowFlying) {
-                player.getAbilities().allowFlying = true;
-            }
+            if (!player.getAbilities().allowFlying) player.getAbilities().allowFlying = true;
             player.getAbilities().flying = true;
         } else {
-            // Reset to survival defaults if we aren't actually in creative
             if (!player.isCreative() && !player.isSpectator()) {
                 player.getAbilities().allowFlying = false;
                 player.getAbilities().flying = false;
             }
         }
 
-        // --- LOGIC (Server Only) ---
         if (player.getWorld().isClient) return;
 
+        // Initialize lastPos if it's the first run
+        if (this.aether$lastPos.equals(Vec3d.ZERO)) {
+            this.aether$lastPos = player.getPos();
+        }
+
+        // 2. Logic
         int pieces = 0;
         for (ItemStack stack : player.getArmorItems()) {
             if (stack.getItem().toString().toLowerCase().contains("gravitite")) {
@@ -99,11 +103,11 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
                 this.aether$setFlightTimer(timer + 1);
             }
         } else if (isFlying) {
-            // Deplete Logic: Only if moving horizontally or moving UP
-            Vec3d vel = player.getVelocity();
-            double horizontalSpeed = vel.horizontalLengthSquared();
+            // Deplete Logic (Robust Position Delta)
+            double distSq = player.getPos().squaredDistanceTo(this.aether$lastPos);
 
-            if (horizontalSpeed > 0.0001 || vel.y > 0) {
+            // If moved more than a tiny bit (0.01 blocks)
+            if (distSq > 0.0001) {
                 this.aether$setFlightTimer(timer - 1);
             }
 
@@ -111,6 +115,9 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
                 this.aether$setGravititeFlying(false);
             }
         }
+
+        // Update lastPos for the next tick comparison
+        this.aether$lastPos = player.getPos();
     }
 
     @Inject(method = "handleFallDamage", at = @At("HEAD"), cancellable = true)

@@ -4,12 +4,24 @@ import net.fabricmc.api.ModInitializer;
 
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.registry.Registries;
+import net.minecraft.registry.Registry;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.sound.SoundEvent;
+import net.minecraft.util.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class GravititeUpgrade implements ModInitializer {
 	public static final String MOD_ID = "gravititeupgrade";
+
+    public static final Identifier ID_LEV_0 = Identifier.of("gravititeupgrade", "levitate0");
+    public static final Identifier ID_LEV_1 = Identifier.of("gravititeupgrade", "levitate1");
+    public static final Identifier ID_LEV_2 = Identifier.of("gravititeupgrade", "levitate2");
+
+    public static final SoundEvent LEVITATE_0 = SoundEvent.of(ID_LEV_0);
+    public static final SoundEvent LEVITATE_1 = SoundEvent.of(ID_LEV_1);
+    public static final SoundEvent LEVITATE_2 = SoundEvent.of(ID_LEV_2);
 
 	// This logger is used to write text to the console and the log file.
 	// It is considered best practice to use your mod id as the logger's name.
@@ -43,6 +55,10 @@ public class GravititeUpgrade implements ModInitializer {
                 }
             });
         });
+
+        Registry.register(Registries.SOUND_EVENT, ID_LEV_0, LEVITATE_0);
+        Registry.register(Registries.SOUND_EVENT, ID_LEV_1, LEVITATE_1);
+        Registry.register(Registries.SOUND_EVENT, ID_LEV_2, LEVITATE_2);
 
         LOGGER.info("Gravitite Upgrade Initialized!");
 	}

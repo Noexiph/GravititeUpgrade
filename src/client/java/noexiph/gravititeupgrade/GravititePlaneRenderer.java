@@ -29,23 +29,19 @@ public class GravititePlaneRenderer {
         if (player instanceof IGravititeFlightAccess access) {
             isFlying = access.aether$isGravititeFlying();
         }
-
-        // If false, stop immediately.
         if (!isFlying) return;
 
         MatrixStack matrices = context.matrixStack();
         Vec3d camPos = context.camera().getPos();
         float tickDelta = context.tickCounter().getTickDelta(false);
 
-        // 2. Interpolate Position
         double x = MathHelper.lerp(tickDelta, player.prevX, player.getX()) - camPos.x;
-        double y = MathHelper.lerp(tickDelta, player.prevY, player.getY()) - camPos.y;
+        double y = MathHelper.lerp(tickDelta, player.prevY, player.getY()) - camPos.y - 0.1;
         double z = MathHelper.lerp(tickDelta, player.prevZ, player.getZ()) - camPos.z;
 
         matrices.push();
         matrices.translate(x, y, z);
 
-        // 3. Calculate Animation Frame (Vertical Strip)
         long time = client.world.getTime();
         int frameIndex = (int) ((time / FRAME_DURATION_TICKS) % FRAMES);
 
@@ -54,22 +50,31 @@ public class GravititePlaneRenderer {
         float vMin = (float) frameIndex / FRAMES;
         float vMax = (float) (frameIndex + 1) / FRAMES;
 
-        // 4. Render
+        // --- RENDER SETUP FIX ---
         RenderSystem.setShader(GameRenderer::getPositionTexProgram);
         RenderSystem.setShaderTexture(0, PLANE_TEXTURE);
+
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
+
+        // FIX: Enable Depth Test so it hides behind the player's legs
+        RenderSystem.enableDepthTest();
+
+        // FIX: Enable Depth Write (Mask=True) if you want it to sort properly with other things,
+        // or False if it's a ghost-like particle. "True" usually fixes "seeing through things".
+        // However, for transparent textures, 'false' is common to avoid cutting holes.
+        // If it was appearing "on top", it's because DepthTest was likely OFF or Func was ALWAYS.
         RenderSystem.depthMask(false);
-        RenderSystem.disableCull(); // Make it visible from below too!
+        RenderSystem.depthFunc(515); // GL_LEQUAL (Standard Minecraft Depth Func)
+
+        RenderSystem.disableCull();
 
         Tessellator tessellator = Tessellator.getInstance();
         BufferBuilder buffer = tessellator.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_TEXTURE);
 
         float size = 1.0f;
 
-        // Rotate 90 degrees on X to lay flat
         matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(90));
-
         Matrix4f matrix = matrices.peek().getPositionMatrix();
 
         buffer.vertex(matrix, -size, -size, 0).texture(uMin, vMin).color(255, 255, 255, 255);
