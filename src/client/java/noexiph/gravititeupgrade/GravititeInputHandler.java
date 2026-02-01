@@ -2,39 +2,70 @@ package noexiph.gravititeupgrade;
 
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.minecraft.client.MinecraftClient;
 
 public class GravititeInputHandler {
 
     private static boolean wasJumping = false;
-    private static int jumpCooldown = 0;
+    private static boolean hasReleasedJumpInAir = false;
+
+    // Timer to track Double-Tap speed
+    private static long lastJumpPressTime = 0;
+    private static final long DOUBLE_TAP_THRESHOLD_MS = 300; // 0.3 Seconds
 
     public static void register() {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (client.player == null) return;
 
-            if (jumpCooldown > 0) jumpCooldown--;
-
             boolean isJumping = client.options.jumpKey.isPressed();
+            boolean onGround = client.player.isOnGround();
+            long currentTime = System.currentTimeMillis();
 
-            // Detect "Rising Edge" (Key pushed down this tick)
+            // 1. Reset "Released" tracker on ground
+            if (onGround) {
+                hasReleasedJumpInAir = false;
+            } else if (!isJumping) {
+                hasReleasedJumpInAir = true;
+            }
+
+            // 2. Input Detection (Rising Edge)
             if (isJumping && !wasJumping) {
-                // Double Jump Condition:
-                // 1. Player is in the air (!isOnGround)
-                // 2. Player is NOT in Creative/Spectator (Vanilla flight handles those)
-                // 3. Player is NOT climbing a ladder/vine
-                if (!client.player.isOnGround() && !client.player.getAbilities().creativeMode && !client.player.isClimbing()) {
 
-                    if (jumpCooldown == 0) {
-                        // Check if we have the interface
-                        if (client.player instanceof IGravititeFlightAccess access) {
-                            // Logic:
-                            // If we are ALREADY flying, we can always toggle OFF.
-                            // If we are NOT flying, we need > 0 fuel to toggle ON.
-                            if (access.aether$isGravititeFlying() || access.aether$getFlightTimer() > 0) {
-                                ClientPlayNetworking.send(new GravititePayload());
-                                jumpCooldown = 4; // Short cooldown to prevent accidental double-toggles
+                if (client.player instanceof IGravititeFlightAccess access) {
+                    boolean isFlying = access.aether$isGravititeFlying();
+                    boolean shouldToggle = false;
+
+                    // --- LOGIC A: WE ARE NOT FLYING (Start Flight) ---
+                    if (!isFlying) {
+                        // Condition: In Air, released space at least once, not creative, not climbing
+                        if (!onGround && hasReleasedJumpInAir && !client.player.getAbilities().creativeMode && !client.player.isClimbing()) {
+                            // Check Fuel
+                            if (access.aether$getFlightTimer() > 0) {
+                                shouldToggle = true;
                             }
                         }
+                    }
+
+                    // --- LOGIC B: WE ARE FLYING (Stop Flight) ---
+                    else {
+                        // Condition: FAST Double Tap detected
+                        if ((currentTime - lastJumpPressTime) <= DOUBLE_TAP_THRESHOLD_MS) {
+                            shouldToggle = true;
+                        } else {
+                            // This is just a single press (Ascend). Do NOT toggle off.
+                        }
+                    }
+
+                    // 3. Execution
+                    if (shouldToggle) {
+                        ClientPlayNetworking.send(new GravititePayload());
+                        access.aether$setGravititeFlying(!isFlying); // Client Prediction (Fixes rendering lag)
+
+                        // Reset timer so we don't trigger again immediately
+                        lastJumpPressTime = 0;
+                    } else {
+                        // Record this press time for the next check
+                        lastJumpPressTime = currentTime;
                     }
                 }
             }

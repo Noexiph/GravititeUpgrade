@@ -31,14 +31,11 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
     @Unique
     private static final TrackedData<Float> FLIGHT_TIMER = DataTracker.registerData(PlayerEntity.class, TrackedDataHandlerRegistry.FLOAT);
 
-    // Initialize the DataTracker
     @Inject(method = "initDataTracker", at = @At("TAIL"))
     protected void initGravititeData(DataTracker.Builder builder, CallbackInfo ci) {
         builder.add(IS_GRAVITITE_FLYING, false);
         builder.add(FLIGHT_TIMER, 0f);
     }
-
-    // --- Interface Implementation (Using DataTracker now) ---
 
     @Override
     public boolean aether$isGravititeFlying() {
@@ -60,14 +57,28 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
         this.dataTracker.set(FLIGHT_TIMER, time);
     }
 
-    // --- Logic Injection ---
-
     @Inject(method = "tick", at = @At("HEAD"))
     private void manageGravititeFlight(CallbackInfo ci) {
         PlayerEntity player = (PlayerEntity) (Object) this;
+
+        // --- VANILLA FLIGHT BRIDGE ---
+        // This connects our custom variable to the actual Vanilla flight mechanics
+        if (this.aether$isGravititeFlying()) {
+            if (!player.getAbilities().allowFlying) {
+                player.getAbilities().allowFlying = true;
+            }
+            player.getAbilities().flying = true;
+        } else {
+            // Reset to survival defaults if we aren't actually in creative
+            if (!player.isCreative() && !player.isSpectator()) {
+                player.getAbilities().allowFlying = false;
+                player.getAbilities().flying = false;
+            }
+        }
+
+        // --- LOGIC (Server Only) ---
         if (player.getWorld().isClient) return;
 
-        // 1. Calculate Max Capacity
         int pieces = 0;
         for (ItemStack stack : player.getArmorItems()) {
             if (stack.getItem().toString().toLowerCase().contains("gravitite")) {
@@ -79,37 +90,29 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
         boolean isFlying = this.aether$isGravititeFlying();
         float timer = this.aether$getFlightTimer();
 
-        // 2. State Management - GROUND
         if (player.isOnGround()) {
-            // FORCE DISABLE FLIGHT if touching ground
             if (isFlying) {
                 this.aether$setGravititeFlying(false);
                 isFlying = false;
             }
-            // Recharge
             if (timer < maxTime) {
                 this.aether$setFlightTimer(timer + 1);
             }
-        }
-        // 3. State Management - AIR
-        else if (isFlying) {
+        } else if (isFlying) {
             // Deplete Logic: Only if moving horizontally or moving UP
             Vec3d vel = player.getVelocity();
             double horizontalSpeed = vel.horizontalLengthSquared();
 
-            // Threshold 0.0001 handles "drift", ensure explicit movement or climbing
             if (horizontalSpeed > 0.0001 || vel.y > 0) {
                 this.aether$setFlightTimer(timer - 1);
             }
 
-            // Cut flight if empty
             if (timer <= 0) {
                 this.aether$setGravititeFlying(false);
             }
         }
     }
 
-    // Prevent Fall Damage
     @Inject(method = "handleFallDamage", at = @At("HEAD"), cancellable = true)
     private void cancelFallDamage(float fallDistance, float damageMultiplier, DamageSource damageSource, CallbackInfoReturnable<Boolean> cir) {
         if (this.aether$getFlightTimer() > 0 || this.aether$isGravititeFlying()) {
