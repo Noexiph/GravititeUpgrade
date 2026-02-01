@@ -1,0 +1,23 @@
+{
+  "levitate0": {
+    "category": "player",
+    "subtitle": "subtitles.gravititeupgrade.levitate",
+    "sounds": [
+      "gravititeupgrade:levitate0"
+    ]
+  },
+  "levitate1": {
+    "category": "player",
+    "subtitle": "subtitles.gravititeupgrade.levitate",
+    "sounds": [
+      "gravititeupgrade:levitate1"
+    ]
+  },
+  "levitate2": {
+    "category": "player",
+    "subtitle": "subtitles.gravititeupgrade.levitate",
+    "sounds": [
+      "gravititeupgrade:levitate2"
+    ]
+  }
+}
