@@ -91,17 +91,27 @@ public class GravititeUpgradeClient implements ClientModInitializer {
         int totalIcons = (int) Math.ceil(maxCrystals);
 
         for (int i = 0; i < totalIcons; i++) {
-            int state = 0;
-            if (currentTimer >= i + 1) state = 2; // Full
-            else if (currentTimer > i) state = 1; // Half
+            int state = 0; // Default Empty
 
+            // Calculate how much "juice" is in this specific crystal (i)
+            // If timer is 3.4, and we are at i=3 (4th crystal): val = 0.4
+            float val = currentTimer - i;
+
+            if (val > 0.5f) {
+                state = 2; // Full (More than half filled)
+            } else if (val > 0.0f) {
+                state = 1; // Half (Between 0 and 0.5)
+            } else {
+                state = 0; // Empty
+            }
+
+            // Texture offsets
             int u = 0;
-            if (state == 1) u = 9;
-            if (state == 0) u = 18;
+            if (state == 1) u = 9;  // Half
+            if (state == 0) u = 18; // Empty
 
-            // Align Left (Start at -91, move right by 8 pixels per icon)
+            // Draw
             int xPos = (width / 2) - 91 + (i * 8);
-
             context.drawTexture(GRAVITY_BAR_TEXTURE, xPos, hudY, u, 0, 9, 9, 27, 9);
         }
         RenderSystem.disableBlend();

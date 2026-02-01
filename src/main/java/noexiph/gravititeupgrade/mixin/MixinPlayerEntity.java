@@ -65,11 +65,9 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
     @Inject(method = "tick", at = @At("HEAD"))
     private void manageGravititeFlight(CallbackInfo ci) {
         PlayerEntity player = (PlayerEntity) (Object) this;
-
-        // Only run logic on Server (Client gets updates via DataTracker)
         if (player.getWorld().isClient) return;
 
-        // 1. Calculate Max Capacity (1.5s per piece)
+        // 1. Calculate Max Capacity
         int pieces = 0;
         for (ItemStack stack : player.getArmorItems()) {
             if (stack.getItem().toString().toLowerCase().contains("gravitite")) {
@@ -81,34 +79,30 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
         boolean isFlying = this.aether$isGravititeFlying();
         float timer = this.aether$getFlightTimer();
 
-        // 2. State Management
+        // 2. State Management - GROUND
         if (player.isOnGround()) {
-            // Landed: Disable flight and Recharge
+            // FORCE DISABLE FLIGHT if touching ground
             if (isFlying) {
                 this.aether$setGravititeFlying(false);
                 isFlying = false;
             }
-
+            // Recharge
             if (timer < maxTime) {
                 this.aether$setFlightTimer(timer + 1);
             }
-        } else if (isFlying) {
-            // In Air & Flying Mode
-
-            // 3. Deplete Logic (FIXED)
-            // Only deplete if player is actually inputting movement (Horizontal) or rising (Jumping/Flying Up)
-            // We ignore negative Y velocity (falling) so hovering in place doesn't waste much fuel
-            // (or you can decide hovering wastes fuel, but falling shouldn't).
-
+        }
+        // 3. State Management - AIR
+        else if (isFlying) {
+            // Deplete Logic: Only if moving horizontally or moving UP
             Vec3d vel = player.getVelocity();
-            double horizontalSpeed = vel.horizontalLengthSquared(); // x^2 + z^2
+            double horizontalSpeed = vel.horizontalLengthSquared();
 
-            // If moving horizontally OR moving up (climbing)
+            // Threshold 0.0001 handles "drift", ensure explicit movement or climbing
             if (horizontalSpeed > 0.0001 || vel.y > 0) {
                 this.aether$setFlightTimer(timer - 1);
             }
 
-            // Safety: Cut flight if out of fuel
+            // Cut flight if empty
             if (timer <= 0) {
                 this.aether$setGravititeFlying(false);
             }

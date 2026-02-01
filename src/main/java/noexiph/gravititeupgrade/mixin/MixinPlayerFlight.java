@@ -14,26 +14,26 @@ public class MixinPlayerFlight {
     @Inject(method = "travel", at = @At("HEAD"), cancellable = true)
     public void overrideTravel(Vec3d movementInput, CallbackInfo ci) {
         PlayerEntity player = (PlayerEntity) (Object) this;
-        if (((IGravititeFlightAccess)player).aether$isGravititeFlying()) {
+        if (player instanceof IGravititeFlightAccess access && access.aether$isGravititeFlying()) {
 
-            // Allow creative-style flight movement
+            // THIS IS KEY:
+            // We act like creative flight for one tick
             player.getAbilities().flying = true;
-
-            // Important: We only want this *physics*, not actual creative mode
-            // You might need to manually apply velocity here to simulate the "Hover"
-            // exactly like Origin Realms if creative flight feels too floaty.
-
-            // Standard creative flight simulation:
-            player.updateVelocity(0.05F, movementInput);
+            player.updateVelocity(0.05F, movementInput); // 0.05F is standard flight speed
             player.move(MovementType.SELF, player.getVelocity());
-            player.setVelocity(player.getVelocity().multiply(0.9));
+            player.setVelocity(player.getVelocity().multiply(0.9)); // Friction
 
-            ci.cancel(); // Cancel vanilla travel logic
-        } else {
-            // Ensure we reset abilities if we stop flying in survival
+            // IMPORTANT: We must NOT leave abilities.flying = true,
+            // otherwise vanilla might kick us or act weird next tick.
+            // However, setting it to false immediately might break the 'move' call above?
+            // Actually, 'move' uses the velocity we just set.
+
+            // If we are NOT in creative, revert the flag immediately after moving
             if (!player.isCreative() && !player.isSpectator()) {
                 player.getAbilities().flying = false;
             }
+
+            ci.cancel(); // Prevent vanilla travel
         }
     }
 }

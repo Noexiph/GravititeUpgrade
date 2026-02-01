@@ -29,7 +29,9 @@ public class GravititePlaneRenderer {
         // Only render if flying
         boolean isFlying = false;
         if (player instanceof IGravititeFlightAccess access) {
-            isFlying = access.aether$isGravititeFlying();
+            if (!access.aether$isGravititeFlying()) return;
+        } else {
+            return;
         }
 
         if (!isFlying) return;
