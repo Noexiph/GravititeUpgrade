@@ -10,7 +10,21 @@ import net.minecraft.util.math.random.Random;
 public class GravititeSoundController {
 
     private static SoundInstance currentSound = null;
-    private static final java.util.Random javaRandom = new java.util.Random();
+
+    // Cycle index instead of Random
+    private static int currentSoundIndex = -1; // Start at -1 so first one is 0
+
+    // --- SEAMLESS LOOP CONFIG ---
+    private static int ticksPlayed = 0;
+    private static int currentSoundDuration = 0;
+
+    // Based on your files being 40 ticks (2s) long with a fade out.
+    // 32 ticks creates an 8-tick (0.4s) cross-fade overlap.
+    private static final int[] SOUND_LENGTH_TICKS = {
+            32, // levitate0
+            32, // levitate1
+            32  // levitate2
+    };
 
     public static void register() {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -22,21 +36,33 @@ public class GravititeSoundController {
             }
 
             if (!isFlying) {
+                // Not flying: Stop sound and reset cycle
                 if (currentSound != null) {
                     client.getSoundManager().stop(currentSound);
                     currentSound = null;
+                    ticksPlayed = 0;
+                    currentSoundIndex = -1; // Optional: Reset to start from 0 next time
                 }
             } else {
-                // If no sound is active, start a new one
-                if (currentSound == null || !client.getSoundManager().isPlaying(currentSound)) {
+                // Flying: Manage Loop
+                ticksPlayed++;
 
-                    SoundEvent nextSound = switch (javaRandom.nextInt(3)) {
+                // Trigger new sound if null OR if we passed the overlap point
+                if (currentSound == null || ticksPlayed >= currentSoundDuration) {
+
+                    // Increment and Cycle (0 -> 1 -> 2 -> 0)
+                    currentSoundIndex = (currentSoundIndex + 1) % 3;
+
+                    SoundEvent nextSound = switch (currentSoundIndex) {
                         case 0 -> GravititeUpgrade.LEVITATE_0;
                         case 1 -> GravititeUpgrade.LEVITATE_1;
                         default -> GravititeUpgrade.LEVITATE_2;
                     };
 
-                    // Play at player location
+                    currentSoundDuration = SOUND_LENGTH_TICKS[currentSoundIndex];
+                    ticksPlayed = 0;
+
+                    // Play at player position
                     double x = client.player.getX();
                     double y = client.player.getY();
                     double z = client.player.getZ();
@@ -44,7 +70,7 @@ public class GravititeSoundController {
                     currentSound = new PositionedSoundInstance(
                             nextSound.getId(),
                             SoundCategory.PLAYERS,
-                            1.0f, 1.0f, // Volume, Pitch
+                            1.0f, 1.0f,
                             Random.create(),
                             false, 0,
                             SoundInstance.AttenuationType.LINEAR,
