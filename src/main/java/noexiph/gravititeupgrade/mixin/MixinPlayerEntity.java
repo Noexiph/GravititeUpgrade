@@ -12,7 +12,7 @@ import net.minecraft.nbt.NbtCompound;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import noexiph.gravititeupgrade.IGravititeFlightAccess;
-import noexiph.gravititeupgrade.registry.GravititeGameRules; // Import the rules
+import noexiph.gravititeupgrade.registry.GravititeGameRules;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -31,6 +31,9 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
     private static final float VANILLA_FLIGHT_SPEED = 0.05f;
 
     @Unique
+    private static final float RECHARGE_RATE = 2.0f;
+
+    @Unique
     private static final TrackedData<Boolean> IS_GRAVITITE_FLYING = DataTracker.registerData(PlayerEntity.class, TrackedDataHandlerRegistry.BOOLEAN);
     @Unique
     private static final TrackedData<Float> FLIGHT_TIMER = DataTracker.registerData(PlayerEntity.class, TrackedDataHandlerRegistry.FLOAT);
@@ -46,12 +49,11 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
         builder.add(FLIGHT_SPEED_PERCENT, 50);
     }
 
-    // --- NBT SAVING & LOADING (Updated) ---
+    // --- NBT SAVING & LOADING ---
 
     @Inject(method = "writeCustomDataToNbt", at = @At("TAIL"))
     public void writeGravititeNbt(NbtCompound nbt, CallbackInfo ci) {
         nbt.putFloat("GravititeFlightTimer", this.aether$getFlightTimer());
-        // Save the flying state so we don't fall on login
         nbt.putBoolean("GravititeIsFlying", this.aether$isGravititeFlying());
     }
 
@@ -61,7 +63,6 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
             this.aether$setFlightTimer(nbt.getFloat("GravititeFlightTimer"));
         }
         if (nbt.contains("GravititeIsFlying")) {
-            // Restore the flying state
             this.aether$setGravititeFlying(nbt.getBoolean("GravititeIsFlying"));
         }
     }
@@ -88,13 +89,12 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
         if (!player.getWorld().isClient) {
             int actualRuleValue = player.getWorld().getGameRules().getInt(GravititeGameRules.GRAVITITE_FLIGHT_SPEED_PERCENT);
 
-            // Only update if different to prevent packet spam
             if (player.getDataTracker().get(FLIGHT_SPEED_PERCENT) != actualRuleValue) {
                 player.getDataTracker().set(FLIGHT_SPEED_PERCENT, actualRuleValue);
             }
         }
 
-        // 2. BOTH SIDES: Read from DataTracker (Client now knows the correct value!)
+        // 2. BOTH SIDES: Read from DataTracker
         int syncedSpeedPercent = player.getDataTracker().get(FLIGHT_SPEED_PERCENT);
         float customSpeed = VANILLA_FLIGHT_SPEED * (syncedSpeedPercent / 100.0f);
 
@@ -104,8 +104,6 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
         if (this.aether$isGravititeFlying()) {
             if (!player.getAbilities().allowFlying) player.getAbilities().allowFlying = true;
             player.getAbilities().flying = true;
-
-            // Now both Client and Server agree on 'customSpeed'
             player.getAbilities().setFlySpeed(customSpeed);
 
         } else {
@@ -138,8 +136,10 @@ public abstract class MixinPlayerEntity extends LivingEntity implements IGraviti
                 this.aether$setGravititeFlying(false);
                 isFlying = false;
             }
+            // --- UPDATED RECHARGE LOGIC ---
             if (timer < maxTime) {
-                this.aether$setFlightTimer(timer + 1);
+                // Recharges faster based on RECHARGE_RATE
+                this.aether$setFlightTimer(Math.min(maxTime, timer + RECHARGE_RATE));
             }
         } else if (isFlying) {
             double distSq = player.getPos().squaredDistanceTo(this.aether$lastPos);
